@@ -70,8 +70,7 @@ impl RLAgent {
     // Computes save path in directory based on game config
     fn save_path(config: &GameConfig) -> PathBuf {
         [
-            "connect4",
-            "rl_data",
+            "connect4_learn",
             &format!("q_table_{}x{}.json", config.cols, config.rows),
         ]
         .iter()
