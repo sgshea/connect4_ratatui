@@ -8,10 +8,6 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 
-// Define the Connect 4 game board dimensions
-const ROWS: usize = 6;
-const COLS: usize = 7;
-
 // Define player types
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, Default)]
 pub enum Player {
@@ -37,21 +33,93 @@ pub enum GameState {
     Draw,
 }
 
+// Configuration for the Connect 4 game
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct GameConfig {
+    pub rows: usize,
+    pub cols: usize,
+    pub connect_length: usize,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        GameConfig {
+            rows: 6,
+            cols: 7,
+            connect_length: 4,
+        }
+    }
+}
+
+// Presets for game config
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum GameConfigPreset {
+    #[default]
+    Standard,
+    Small,
+    Large,
+    Huge,
+}
+
+impl GameConfigPreset {
+    pub fn amount_of_presets() -> usize {
+        4
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            0 => GameConfigPreset::Standard,
+            1 => GameConfigPreset::Small,
+            2 => GameConfigPreset::Large,
+            3 => GameConfigPreset::Huge,
+            _ => GameConfigPreset::Standard,
+        }
+    }
+
+    pub fn into_config(self) -> GameConfig {
+        match self {
+            GameConfigPreset::Standard => GameConfig::default(),
+            GameConfigPreset::Small => GameConfig {
+                rows: 4,
+                cols: 4,
+                connect_length: 3,
+            },
+            GameConfigPreset::Large => GameConfig {
+                rows: 8,
+                cols: 8,
+                connect_length: 5,
+            },
+            GameConfigPreset::Huge => GameConfig {
+                rows: 10,
+                cols: 10,
+                connect_length: 6,
+            },
+        }
+    }
+}
+
 // Connect 4 game struct
 #[derive(Clone, PartialEq, Debug)]
 pub struct Game {
-    board: [[Option<Player>; COLS]; ROWS],
+    board: Vec<Vec<Option<Player>>>,
     current_player: Player,
-    pub state: GameState,
+    state: GameState,
+    config: GameConfig,
 }
 
 impl Game {
     // Create a new game
     pub fn new() -> Self {
+        Self::with_config(GameConfig::default())
+    }
+
+    pub fn with_config(config: GameConfig) -> Self {
+        let board = vec![vec![None; config.cols]; config.rows];
         Game {
-            board: [[None; COLS]; ROWS],
+            board,
             current_player: Player::Yellow, // Yellow goes first
             state: GameState::InProgress,
+            config,
         }
     }
 
@@ -62,8 +130,12 @@ impl Game {
             return Some(self.state);
         }
 
+        if column >= self.config.cols {
+            return None;
+        }
+
         // Find the first empty row in the column (from bottom to top)
-        let row = (0..ROWS)
+        let row = (0..self.config.rows)
             .rev()
             .find(|&row| self.board[row][column].is_none());
 
@@ -104,6 +176,17 @@ impl Game {
         &self.state
     }
 
+    pub fn config(&self) -> &GameConfig {
+        &self.config
+    }
+
+    pub fn valid_moves(&self) -> Vec<usize> {
+        let valid_moves: Vec<usize> = (0..self.config.cols)
+            .filter(|&col| !self.is_column_full(col))
+            .collect();
+        valid_moves
+    }
+
     // Check if the move at (row, col) results in a win
     fn check_win(&self, row: usize, col: usize) -> bool {
         // Check horizontal
@@ -132,11 +215,11 @@ impl Game {
     pub fn get_winning_combination(&self) -> Option<Vec<(usize, usize)>> {
         if let GameState::Won(player) = self.state {
             // Check all possible positions for a starting point of a winning combination
-            for row in 0..ROWS {
-                for col in 0..COLS {
+            for row in 0..self.config.rows {
+                for col in 0..self.config.cols {
                     if self.board[row][col] == Some(player) {
                         // Check horizontal
-                        if col + 3 < COLS {
+                        if col + 3 < self.config.cols {
                             let mut valid = true;
                             for i in 1..4 {
                                 if self.board[row][col + i] != Some(player) {
@@ -155,7 +238,7 @@ impl Game {
                         }
 
                         // Check vertical
-                        if row + 3 < ROWS {
+                        if row + 3 < self.config.rows {
                             let mut valid = true;
                             for i in 1..4 {
                                 if self.board[row + i][col] != Some(player) {
@@ -174,7 +257,7 @@ impl Game {
                         }
 
                         // Check diagonal (/)
-                        if row >= 3 && col + 3 < COLS {
+                        if row >= 3 && col + 3 < self.config.cols {
                             let mut valid = true;
                             for i in 1..4 {
                                 if self.board[row - i][col + i] != Some(player) {
@@ -193,7 +276,7 @@ impl Game {
                         }
 
                         // Check diagonal (\)
-                        if row + 3 < ROWS && col + 3 < COLS {
+                        if row + 3 < self.config.rows && col + 3 < self.config.cols {
                             let mut valid = true;
                             for i in 1..4 {
                                 if self.board[row + i][col + i] != Some(player) {
@@ -245,9 +328,9 @@ impl Game {
         let mut c = col as i32 + col_dir;
 
         while r >= 0
-            && r < ROWS as i32
+            && r < self.config.rows as i32
             && c >= 0
-            && c < COLS as i32
+            && c < self.config.cols as i32
             && self.board[r as usize][c as usize] == Some(player)
         {
             count += 1;
@@ -271,7 +354,7 @@ impl Game {
 
     // Get a cell's content
     pub fn get_cell(&self, row: usize, col: usize) -> Option<Player> {
-        if row < ROWS && col < COLS {
+        if row < self.config.rows && col < self.config.cols {
             self.board[row][col]
         } else {
             None
@@ -293,7 +376,7 @@ impl<'a> Widget for GridWidget<'a> {
 
         // Add column numbers
         let mut header = Line::default();
-        for i in 0..COLS {
+        for i in 0..self.game.config.cols {
             header.spans.push(format!(" {}  ", i + 1).bold().blue());
         }
         grid.lines.push(header);
@@ -311,11 +394,11 @@ impl<'a> Widget for GridWidget<'a> {
         };
 
         // Add the game board
-        for row in 0..ROWS {
+        for row in 0..self.game.config.rows {
             let mut line = Line::default();
             line.spans.push("│".into()); // Left border
 
-            for col in 0..COLS {
+            for col in 0..self.game.config.cols {
                 let mut cell = match self.game.get_cell(row, col) {
                     Some(Player::Red) => " ● ".red(),
                     Some(Player::Yellow) => " ● ".yellow(),
@@ -333,12 +416,12 @@ impl<'a> Widget for GridWidget<'a> {
             grid.lines.push(line);
 
             // Add row separator except after the last row
-            if row < ROWS - 1 {
+            if row < self.game.config.rows - 1 {
                 let mut separator = Line::default();
                 separator.spans.push("├".into());
-                for col in 0..COLS {
+                for col in 0..self.game.config.cols {
                     separator.spans.push("───".into());
-                    if col < COLS - 1 {
+                    if col < self.game.config.cols - 1 {
                         separator.spans.push("┼".into());
                     } else {
                         separator.spans.push("┤".into());
@@ -351,9 +434,9 @@ impl<'a> Widget for GridWidget<'a> {
         // Add bottom border
         let mut bottom = Line::default();
         bottom.spans.push("└".into());
-        for col in 0..COLS {
+        for col in 0..self.game.config.cols {
             bottom.spans.push("───".into());
-            if col < COLS - 1 {
+            if col < self.game.config.cols - 1 {
                 bottom.spans.push("┴".into());
             } else {
                 bottom.spans.push("┘".into());

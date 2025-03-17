@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, io, path::Path};
+use std::{collections::HashMap, fs, io, path::PathBuf};
 
 use crossterm::event::Event;
 use rand::Rng;
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::Agent,
-    game::{Game, GameState, Player},
+    game::{Game, GameConfig, GameState, Player},
 };
 
 /// RL agent implementation using Q-learning algorithm with history
@@ -27,10 +27,12 @@ pub struct RLAgent {
     // Game history for learning from sequences
     #[serde(skip)]
     move_history: Vec<(String, usize)>,
+
+    #[serde(skip)]
+    board_config: GameConfig,
 }
 
 impl RLAgent {
-    const SAVE_PATH: &'static str = "./rl_data/q_table.json";
     const LEARNING_RATE: f64 = 0.15;
     const WIN_REWARD: f64 = 5.0;
     const LOSS_REWARD: f64 = -10.0; // Doubled loss penalty
@@ -38,7 +40,12 @@ impl RLAgent {
     const DURATION_REWARD: f64 = 0.02;
     const MAX_HISTORY: usize = 3; // Number of previous moves to consider
 
-    pub fn new(epsilon: f64, learning: bool, agent_color: Player) -> Self {
+    pub fn new(
+        epsilon: f64,
+        learning: bool,
+        agent_color: Player,
+        board_config: GameConfig,
+    ) -> Self {
         // Create a new agent
         let mut agent = RLAgent {
             q_table: HashMap::new(),
@@ -47,10 +54,11 @@ impl RLAgent {
             agent_color,
             turn: 0,
             move_history: Vec::new(),
+            board_config,
         };
 
         // Try to load existing Q-table if available
-        if Path::new(Self::SAVE_PATH).exists() {
+        if Self::save_path(&board_config).exists() {
             if let Err(e) = agent.load_q_table() {
                 eprintln!("Failed to load Q-table: {}", e);
             }
@@ -59,16 +67,24 @@ impl RLAgent {
         agent
     }
 
+    // Computes save path in directory based on game config
+    fn save_path(config: &GameConfig) -> PathBuf {
+        PathBuf::from(format!(
+            "./rl_data/q_table_{}x{}.json",
+            config.rows, config.cols
+        ))
+    }
+
     // Convert board to a string representation for the Q-table
     fn board_to_state(&self, board: &Game) -> String {
         let mut state = String::with_capacity(21);
 
         // For each column, encode the pieces from bottom to top
-        for col in 0..7 {
+        for col in 0..board.config().cols {
             let mut col_pieces = Vec::new();
 
             // Find pieces in this column (from bottom up)
-            for row in (0..6).rev() {
+            for row in (0..board.config().rows).rev() {
                 if let Some(player) = board.get_cell(row, col) {
                     // agent-centric encoding
                     if player == self.agent_color {
@@ -106,7 +122,9 @@ impl RLAgent {
     // Select the best action based on Q-values
     fn select_action(&mut self, board: &Game) -> Option<usize> {
         // Get valid moves
-        let valid_moves: Vec<usize> = (0..7).filter(|&col| !board.is_column_full(col)).collect();
+        let valid_moves: Vec<usize> = (0..self.board_config.cols)
+            .filter(|&col| !board.is_column_full(col))
+            .collect();
 
         if valid_moves.is_empty() {
             return None;
@@ -127,7 +145,7 @@ impl RLAgent {
 
         // Otherwise, choose best action (exploitation)
         let state = self.board_to_state(board);
-        let zeroes = vec![0.0; 7];
+        let zeroes = vec![0.0; board.config().cols];
         let q_values = self.q_table.get(&state).unwrap_or(&zeroes);
 
         // Find move with highest Q-value
@@ -150,7 +168,7 @@ impl RLAgent {
 
         // If multiple best moves, prefer center columns
         if best_moves.len() > 1 {
-            best_moves.sort_by_key(|&col| (col as i32 - 3).abs());
+            best_moves.sort_by_key(|&col| (col as i32 - self.board_config.cols as i32 / 2).abs());
         }
 
         Some(best_moves[0])
@@ -161,10 +179,10 @@ impl RLAgent {
         let q_values = self
             .q_table
             .entry(state.to_string())
-            .or_insert_with(|| vec![0.0; 7]);
+            .or_insert_with(|| vec![0.0; self.board_config.cols]);
 
         if q_values.len() <= action {
-            q_values.resize(7, 0.0);
+            q_values.resize(self.board_config.cols, 0.0);
         }
 
         let old_value = q_values[action];
@@ -176,7 +194,7 @@ impl RLAgent {
     // Save Q-table to disk
     fn save_q_table(&self) -> io::Result<()> {
         // Create directory if it doesn't exist
-        if let Some(parent) = Path::new(Self::SAVE_PATH).parent() {
+        if let Some(parent) = Self::save_path(&self.board_config).parent() {
             fs::create_dir_all(parent)?;
         }
 
@@ -187,14 +205,14 @@ impl RLAgent {
 
         // Serialize and save
         let serialized = serde_json::to_string(&self)?;
-        fs::write(Self::SAVE_PATH, serialized)?;
+        fs::write(Self::save_path(&self.board_config), serialized)?;
 
         Ok(())
     }
 
     // Load Q-table from disk
     fn load_q_table(&mut self) -> io::Result<()> {
-        let data = fs::read_to_string(Self::SAVE_PATH)?;
+        let data = fs::read_to_string(Self::save_path(&self.board_config))?;
         let loaded: RLAgent = serde_json::from_str(&data)?;
 
         self.q_table = loaded.q_table;
@@ -281,7 +299,11 @@ impl Agent for RLAgent {
 
         // Save updated Q-table
         if let Err(e) = self.save_q_table() {
-            eprintln!("Error saving Q-table: {}", e);
+            eprintln!(
+                "Error saving Q-table at {:?}: {}",
+                Self::save_path(&self.board_config),
+                e
+            );
         }
 
         // Clear history and reset turn counter

@@ -11,10 +11,6 @@ pub struct MinimaxAgent {
 }
 
 impl MinimaxAgent {
-    pub fn new(max_depth: usize) -> Self {
-        MinimaxAgent { max_depth }
-    }
-
     /// Minimax algorithm with alpha-beta pruning
     fn minimax(
         &self,

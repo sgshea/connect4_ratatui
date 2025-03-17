@@ -10,7 +10,7 @@ use std::{
     u64::MAX,
 };
 
-use agent::AgentFactory;
+use agent::Agents;
 use app::render;
 use color_eyre::Result;
 use crossterm::{
@@ -18,7 +18,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use game::{GameState, Player};
+use game::{GameConfigPreset, GameState, Player};
 use ratatui::{DefaultTerminal, Terminal, prelude::CrosstermBackend};
 
 fn main() -> Result<()> {
@@ -90,9 +90,7 @@ pub fn restore() -> io::Result<()> {
 }
 
 fn run(terminal: &mut DefaultTerminal) -> Result<()> {
-    let yellow_agent = minimax_agent::MinimaxAgent::new(7);
-    let red_agent = minimax_agent::MinimaxAgent::new(1);
-    let mut app = app::App::new(Box::new(yellow_agent), Box::new(red_agent));
+    let mut app = app::App::new();
     let mut run_speed = RunSpeed::Manual;
 
     loop {
@@ -118,28 +116,45 @@ fn run(terminal: &mut DefaultTerminal) -> Result<()> {
                     KeyCode::Char(' ') => app.step(None)?,
 
                     // List
-                    KeyCode::Char('g') => app.list.state.select_first(),
-                    KeyCode::Char('G') => app.list.state.select_last(),
-                    KeyCode::Char('j') | KeyCode::Down => app.list.state.select_next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.list.state.select_previous(),
+                    KeyCode::Char('g') => app.agent_list.state.select_first(),
+                    KeyCode::Char('G') => app.agent_list.state.select_last(),
+                    KeyCode::Char('j') | KeyCode::Down => app.agent_list.state.select_next(),
+                    KeyCode::Char('k') | KeyCode::Up => app.agent_list.state.select_previous(),
                     KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                        let selected = app.list.state.selected();
+                        let selected = app.agent_list.state.selected();
                         // first two are the players
                         match selected {
-                            Some(0) => app.list.selected_player = Player::Yellow,
-                            Some(1) => app.list.selected_player = Player::Red,
+                            Some(0) => app.agent_list.selected_player = Player::Yellow,
+                            Some(1) => app.agent_list.selected_player = Player::Red,
                             Some(x) => {
                                 // Handle from AGENTS list
                                 let agent_index = x - 2;
-                                let agent = AgentFactory::create_agent(
-                                    &AgentFactory::agent_types()[agent_index],
-                                    app.list.selected_player,
+                                app.set_agent(
+                                    app.agent_list.selected_player,
+                                    Agents::agent_types()[agent_index].clone(),
                                 );
-                                app.set_agent(app.list.selected_player, agent);
                             }
                             None => {}
                         }
-                        app.list.state.select(None);
+                        app.agent_list.state.select(None);
+                    }
+                    KeyCode::Char('c') | KeyCode::Char('C') => {
+                        // Cycle through config
+                        if app
+                            .config_list
+                            .state
+                            .selected()
+                            .is_none_or(|i| i == GameConfigPreset::amount_of_presets() - 1)
+                        {
+                            app.config_list.state.select_first();
+                        } else {
+                            app.config_list.state.select_next();
+                        }
+                        // Reset game with new config
+                        app.config_list.selected_game = GameConfigPreset::from_index(
+                            app.config_list.state.selected().unwrap_or(0),
+                        );
+                        app.reset();
                     }
                     _ => {
                         if *app.game.state() == GameState::InProgress {

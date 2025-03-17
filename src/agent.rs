@@ -1,7 +1,7 @@
 use crossterm::event::{Event, KeyCode};
 
 use crate::{
-    game::{Game, Player},
+    game::{Game, GameConfig, Player},
     minimax_agent::MinimaxAgent,
     rl_agent::RLAgent,
 };
@@ -21,10 +21,22 @@ pub trait Agent {
     fn learn(&mut self, board: &Game, player: Player);
 }
 
-pub struct AgentFactory;
+/// Different agent types
+#[derive(Debug, Clone, PartialEq)]
+pub enum Agents {
+    Human,
+    Random,
+    Greedy,
+    Minimax(usize),
+    RL(f64, bool),
+}
 
-impl AgentFactory {
-    pub fn create_agent(agent_type: &str, agent_color: Player) -> Box<dyn Agent> {
+impl Agents {
+    pub fn create_agent(
+        agent_type: &str,
+        agent_color: Player,
+        game_config: GameConfig,
+    ) -> Box<dyn Agent> {
         match agent_type {
             "Human" => Box::new(HumanAgent),
             "Random" => Box::new(RandomAgent),
@@ -34,13 +46,42 @@ impl AgentFactory {
             "Minimax (5)" => Box::new(MinimaxAgent { max_depth: 5 }),
             "Minimax (7)" => Box::new(MinimaxAgent { max_depth: 7 }),
             "Minimax (9)" => Box::new(MinimaxAgent { max_depth: 9 }),
-            "RL (0.2)" => Box::new(RLAgent::new(0.2, false, agent_color)),
-            "RL (Learning)" => Box::new(RLAgent::new(0.4, true, agent_color)),
+            "RL (0.2)" => Box::new(RLAgent::new(0.2, false, agent_color, game_config)),
+            "RL (Learning)" => Box::new(RLAgent::new(0.4, true, agent_color, game_config)),
             _ => panic!("Invalid agent type"),
         }
     }
 
-    pub fn agent_types() -> Vec<String> {
+    pub fn agent_types() -> Vec<Self> {
+        vec![
+            Self::Random,
+            Self::Greedy,
+            Self::Minimax(1),
+            Self::Minimax(3),
+            Self::Minimax(5),
+            Self::Minimax(7),
+            Self::Minimax(9),
+            Self::RL(0.2, false),
+            Self::RL(0.4, true),
+        ]
+    }
+
+    pub fn into_agent(self, agent_color: Player, game_config: GameConfig) -> Box<dyn Agent> {
+        match self {
+            Self::Human => Box::new(HumanAgent),
+            Self::Random => Box::new(RandomAgent),
+            Self::Greedy => Box::new(GreedyAgent),
+            Self::Minimax(depth) => Box::new(MinimaxAgent { max_depth: depth }),
+            Self::RL(learning_rate, is_learning) => Box::new(RLAgent::new(
+                learning_rate,
+                is_learning,
+                agent_color,
+                game_config,
+            )),
+        }
+    }
+
+    pub fn agent_names() -> Vec<String> {
         vec![
             "Human".to_string(),
             "Random".to_string(),
@@ -100,16 +141,9 @@ impl Agent for RandomAgent {
         use rand::Rng;
         let mut rng = rand::rng();
 
-        // Get the valid moves (empty columns)
-        let valid_moves: Vec<usize> = (0..7).filter(|&col| !board.is_column_full(col)).collect();
-
-        if valid_moves.is_empty() {
-            return None;
-        }
-
         // Select a random valid move
-        let random_index = rng.random_range(0..valid_moves.len());
-        Some(valid_moves[random_index])
+        let random_index = rng.random_range(0..board.valid_moves().len());
+        Some(board.valid_moves()[random_index])
     }
 
     fn get_type(&self) -> String {
@@ -141,8 +175,8 @@ impl GreedyAgent {
         let mut score = 0;
 
         // Check entire board for clusters
-        for row in 0..6 {
-            for col in 0..7 {
+        for row in 0..board.config().rows {
+            for col in 0..board.config().cols {
                 if let Some(piece) = board_copy.get_cell(row, col) {
                     if piece == player {
                         // Add points for each neighbor of same color
@@ -163,7 +197,11 @@ impl GreedyAgent {
                             let new_col = col as i32 + dc;
 
                             // Check bounds
-                            if new_row >= 0 && new_row < 6 && new_col >= 0 && new_col < 7 {
+                            if new_row >= 0
+                                && new_row < board.config().rows as i32
+                                && new_col >= 0
+                                && new_col < board.config().cols as i32
+                            {
                                 if let Some(neighbor) =
                                     board_copy.get_cell(new_row as usize, new_col as usize)
                                 {
@@ -185,7 +223,7 @@ impl GreedyAgent {
 impl Agent for GreedyAgent {
     fn get_action(&mut self, board: &Game, _event: Option<Event>) -> Option<usize> {
         // Get valid moves
-        let valid_moves: Vec<usize> = (0..7).filter(|&col| !board.is_column_full(col)).collect();
+        let valid_moves: Vec<usize> = board.valid_moves();
 
         if valid_moves.is_empty() {
             return None;
@@ -209,8 +247,9 @@ impl Agent for GreedyAgent {
 
         // If we have multiple best moves, prefer center columns
         if best_moves.len() > 1 {
-            // Sort by distance from center (column 3)
-            best_moves.sort_by_key(|&col| (col as i32 - 3).abs());
+            // Sort by distance from center
+            let center = valid_moves.len() / 2;
+            best_moves.sort_by_key(|&col| (col as i32 - center as i32).abs());
         }
 
         Some(best_moves[0])
