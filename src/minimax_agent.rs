@@ -132,8 +132,8 @@ impl MinimaxAgent {
         };
 
         // Evaluate center control (column 3, which is index 3)
-        let center_col = 3;
-        for row in 0..6 {
+        let center_col = board.config().cols / 2;
+        for row in 0..board.config().rows {
             match board.get_cell(row, center_col) {
                 Some(player) if player == my_color => score += 5, // Prioritize center control
                 Some(player) if player == opponent_color => score -= 2, // Penalize opponent's center control
@@ -142,8 +142,8 @@ impl MinimaxAgent {
         }
 
         // Evaluate pieces with their positions
-        for row in 0..6 {
-            for col in 0..7 {
+        for row in 0..board.config().rows {
+            for col in 0..board.config().cols {
                 match board.get_cell(row, col) {
                     Some(player) if player == my_color => {
                         // Pieces closer to the center are more valuable
@@ -186,7 +186,11 @@ impl MinimaxAgent {
             let new_col = col as i32 + col_dir;
 
             // Check if position is valid and has the same color
-            if new_row >= 0 && new_row < 6 && new_col >= 0 && new_col < 7 {
+            if new_row >= 0
+                && new_row < board.config().rows as i32
+                && new_col >= 0
+                && new_col < board.config().cols as i32
+            {
                 if let Some(player) = board.get_cell(new_row as usize, new_col as usize) {
                     if player == color {
                         return true;
