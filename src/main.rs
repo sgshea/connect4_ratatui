@@ -14,7 +14,7 @@ use agent::Agents;
 use app::render;
 use color_eyre::Result;
 use crossterm::{
-    event::{self, KeyCode},
+    event::{self, KeyCode, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -100,68 +100,76 @@ fn run(terminal: &mut DefaultTerminal) -> Result<()> {
         if event_exists || run_speed == RunSpeed::Manual {
             let event = event::read()?;
             match event {
-                event::Event::Key(key) => match key.code {
-                    KeyCode::Char('q') => break Ok(()),
-                    KeyCode::Char('s') => run_speed = RunSpeed::Slow,
-                    KeyCode::Char('f') => run_speed = RunSpeed::Fast,
-                    KeyCode::Char('i') => run_speed = RunSpeed::Instant,
-                    KeyCode::Char('m') => run_speed = RunSpeed::Manual,
-                    KeyCode::Char('r') => {
-                        app.menu_open = false;
-                        app.reset();
-                    }
-                    KeyCode::Char('p') => {
-                        app.menu_open = true;
-                    }
-                    KeyCode::Char(' ') => app.step(None)?,
-
-                    // List
-                    KeyCode::Char('g') => app.agent_list.state.select_first(),
-                    KeyCode::Char('G') => app.agent_list.state.select_last(),
-                    KeyCode::Char('j') | KeyCode::Down => app.agent_list.state.select_next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.agent_list.state.select_previous(),
-                    KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                        let selected = app.agent_list.state.selected();
-                        // first two are the players
-                        match selected {
-                            Some(0) => app.agent_list.selected_player = Player::Yellow,
-                            Some(1) => app.agent_list.selected_player = Player::Red,
-                            Some(x) => {
-                                // Handle from AGENTS list
-                                let agent_index = x - 2;
-                                app.set_agent(
-                                    app.agent_list.selected_player,
-                                    Agents::agent_types()[agent_index].clone(),
-                                );
+                event::Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Char('q') => break Ok(()),
+                            KeyCode::Char('s') => run_speed = RunSpeed::Slow,
+                            KeyCode::Char('f') => run_speed = RunSpeed::Fast,
+                            KeyCode::Char('i') => run_speed = RunSpeed::Instant,
+                            KeyCode::Char('m') => run_speed = RunSpeed::Manual,
+                            KeyCode::Char('r') => {
+                                app.menu_open = false;
+                                app.reset();
                             }
-                            None => {}
+                            KeyCode::Char('p') => {
+                                app.menu_open = true;
+                            }
+                            KeyCode::Char(' ') => app.step(None)?,
+
+                            // List
+                            KeyCode::Char('g') => app.agent_list.state.select_first(),
+                            KeyCode::Char('G') => app.agent_list.state.select_last(),
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                app.agent_list.state.select_next()
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                app.agent_list.state.select_previous()
+                            }
+                            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                                let selected = app.agent_list.state.selected();
+                                // first two are the players
+                                match selected {
+                                    Some(0) => app.agent_list.selected_player = Player::Yellow,
+                                    Some(1) => app.agent_list.selected_player = Player::Red,
+                                    Some(x) => {
+                                        // Handle from AGENTS list
+                                        let agent_index = x - 2;
+                                        app.set_agent(
+                                            app.agent_list.selected_player,
+                                            Agents::agent_types()[agent_index].clone(),
+                                        );
+                                    }
+                                    None => {}
+                                }
+                                app.agent_list.state.select(None);
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('C') => {
+                                // Cycle through config
+                                if app
+                                    .config_list
+                                    .state
+                                    .selected()
+                                    .is_none_or(|i| i == GameConfigPreset::amount_of_presets() - 1)
+                                {
+                                    app.config_list.state.select_first();
+                                } else {
+                                    app.config_list.state.select_next();
+                                }
+                                // Reset game with new config
+                                app.config_list.selected_game = GameConfigPreset::from_index(
+                                    app.config_list.state.selected().unwrap_or(0),
+                                );
+                                app.reset();
+                            }
+                            _ => {
+                                if *app.game.state() == GameState::InProgress {
+                                    app.step(Some(event))?;
+                                }
+                            }
                         }
-                        app.agent_list.state.select(None);
                     }
-                    KeyCode::Char('c') | KeyCode::Char('C') => {
-                        // Cycle through config
-                        if app
-                            .config_list
-                            .state
-                            .selected()
-                            .is_none_or(|i| i == GameConfigPreset::amount_of_presets() - 1)
-                        {
-                            app.config_list.state.select_first();
-                        } else {
-                            app.config_list.state.select_next();
-                        }
-                        // Reset game with new config
-                        app.config_list.selected_game = GameConfigPreset::from_index(
-                            app.config_list.state.selected().unwrap_or(0),
-                        );
-                        app.reset();
-                    }
-                    _ => {
-                        if *app.game.state() == GameState::InProgress {
-                            app.step(Some(event))?;
-                        }
-                    }
-                },
+                }
                 _ => {}
             }
         } else {

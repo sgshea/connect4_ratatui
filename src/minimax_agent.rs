@@ -39,7 +39,7 @@ impl MinimaxAgent {
         }
 
         // Get valid actions based on the board state
-        let valid_moves: Vec<usize> = (0..7).filter(|&col| !board.is_column_full(col)).collect();
+        let valid_moves: Vec<usize> = board.valid_moves();
 
         if valid_moves.is_empty() {
             return 0; // No valid moves, treat as neutral
@@ -97,7 +97,7 @@ impl MinimaxAgent {
         if current_player != player {
             // If it's not the player's turn, we need two moves to test
             // First, place a piece for the current player in a different column if possible
-            for col in 0..7 {
+            for col in 0..board.config().cols {
                 if col != column && !board_copy.is_column_full(col) {
                     if board_copy.place(col).is_some() {
                         break;
@@ -201,7 +201,7 @@ impl MinimaxAgent {
 
 impl Agent for MinimaxAgent {
     fn get_action(&mut self, board: &Game, _event: Option<Event>) -> Option<usize> {
-        let valid_moves: Vec<usize> = (0..7).filter(|&col| !board.is_column_full(col)).collect();
+        let valid_moves: Vec<usize> = board.valid_moves();
 
         // If only one action is available, return it immediately
         if valid_moves.len() == 1 {

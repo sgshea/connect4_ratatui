@@ -54,6 +54,7 @@ impl Agents {
 
     pub fn agent_types() -> Vec<Self> {
         vec![
+            Self::Human,
             Self::Random,
             Self::Greedy,
             Self::Minimax(1),
@@ -91,8 +92,8 @@ impl Agents {
             "Minimax (5)".to_string(),
             "Minimax (7)".to_string(),
             "Minimax (9)".to_string(),
-            "RL (0.2)".to_string(),
-            "RL (Learning)".to_string(),
+            "Q-table RL (Trained) (0.2)".to_string(),
+            "Q-table RL (Learning) (0.4)".to_string(),
         ]
     }
 }

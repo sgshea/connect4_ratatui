@@ -69,10 +69,13 @@ impl RLAgent {
 
     // Computes save path in directory based on game config
     fn save_path(config: &GameConfig) -> PathBuf {
-        PathBuf::from(format!(
-            "./rl_data/q_table_{}x{}.json",
-            config.rows, config.cols
-        ))
+        [
+            "connect4",
+            "rl_data",
+            &format!("q_table_{}x{}.json", config.cols, config.rows),
+        ]
+        .iter()
+        .collect()
     }
 
     // Convert board to a string representation for the Q-table
@@ -122,9 +125,7 @@ impl RLAgent {
     // Select the best action based on Q-values
     fn select_action(&mut self, board: &Game) -> Option<usize> {
         // Get valid moves
-        let valid_moves: Vec<usize> = (0..self.board_config.cols)
-            .filter(|&col| !board.is_column_full(col))
-            .collect();
+        let valid_moves: Vec<usize> = board.valid_moves();
 
         if valid_moves.is_empty() {
             return None;
